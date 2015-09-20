@@ -75,6 +75,7 @@ UIKIT_EXTERN NSString *const FXFormFieldTypeDate; //date
 UIKIT_EXTERN NSString *const FXFormFieldTypeTime; //time
 UIKIT_EXTERN NSString *const FXFormFieldTypeDateTime; //datetime
 UIKIT_EXTERN NSString *const FXFormFieldTypeImage; //image
+UIKIT_EXTERN NSString *const FXFormFieldTypeInlinePicker; // Inline picker for Private
 
 
 #pragma mark -
@@ -125,6 +126,7 @@ UIKIT_EXTERN NSString *const FXFormFieldTypeImage; //image
 - (NSString *)optionDescriptionAtIndex:(NSUInteger)index;
 - (void)setOptionSelected:(BOOL)selected atIndex:(NSUInteger)index;
 - (BOOL)isOptionSelectedAtIndex:(NSUInteger)index;
+- (BOOL)isInlinePickerType;
 
 @end
 
@@ -204,6 +206,8 @@ UIKIT_EXTERN NSString *const FXFormFieldTypeImage; //image
 - (void)update;
 - (void)didSelectWithTableView:(UITableView *)tableView
                     controller:(UIViewController *)controller;
+- (void)showInlinePicker:(UIView*)view;
+- (void)hideInlineDatePicker;
 
 @end
 
@@ -273,6 +277,10 @@ UIKIT_EXTERN NSString *const FXFormFieldTypeImage; //image
 @interface FXFormOptionSegmentsCell : FXFormBaseCell
 
 @property (nonatomic, readonly) UISegmentedControl *segmentedControl;
+
+@end
+
+@interface FXFormInlinePickerCell : FXFormBaseCell;
 
 @end
 

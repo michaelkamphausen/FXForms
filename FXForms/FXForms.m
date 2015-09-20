@@ -84,6 +84,8 @@ NSString *const FXFormFieldTypeDate = @"date";
 NSString *const FXFormFieldTypeTime = @"time";
 NSString *const FXFormFieldTypeDateTime = @"datetime";
 NSString *const FXFormFieldTypeImage = @"image";
+// Private
+NSString *const FXFormFieldTypeInlinePicker = @"inlinePicker";
 
 
 static NSString *const FXFormsException = @"FXFormsException";
@@ -636,6 +638,7 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
 
 @property (nonatomic, copy) NSArray *sections;
 @property (nonatomic, strong) NSMutableDictionary *cellHeightCache;
+@property (nonatomic, strong) NSMutableDictionary *cellResponderCache;
 @property (nonatomic, strong) NSMutableDictionary *cellClassesForFieldTypes;
 @property (nonatomic, strong) NSMutableDictionary *cellClassesForFieldClasses;
 @property (nonatomic, strong) NSMutableDictionary *controllerClassesForFieldTypes;
@@ -1378,6 +1381,11 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
     }
 }
 
+- (BOOL)isInlineDatePickerType
+{
+    return self.isInline && [@[FXFormFieldTypeDateTime, FXFormFieldTypeTime, FXFormFieldTypeDate] containsObject:self.type];
+}
+
 @end
 
 
@@ -1845,10 +1853,12 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
                                        FXFormFieldTypeDate: [FXFormDatePickerCell class],
                                        FXFormFieldTypeTime: [FXFormDatePickerCell class],
                                        FXFormFieldTypeDateTime: [FXFormDatePickerCell class],
+                                       FXFormFieldTypeInlinePicker: [FXFormInlinePickerCell class],
                                        FXFormFieldTypeImage: [FXFormImagePickerCell class]} mutableCopy];
         _cellClassesForFieldClasses = [NSMutableDictionary dictionary];
         _controllerClassesForFieldTypes = [@{FXFormFieldTypeDefault: [FXFormViewController class]} mutableCopy];
         _controllerClassesForFieldClasses = [NSMutableDictionary dictionary];
+        _cellResponderCache = [NSMutableDictionary dictionary];
         
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(keyboardDidShow:)
@@ -2136,9 +2146,20 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
         {
             style = UITableViewCellStyleValue1;
         }
-
+        
+        UITableViewCell *cell = [[cellClass alloc] initWithStyle:style reuseIdentifier:NSStringFromClass(cellClass)];
+        if ([field.type isEqualToString:FXFormFieldTypeInlinePicker]) {
+            NSIndexPath *indexPath = [self indexPathForField:field];
+            UIView *pickerView = self.cellResponderCache[[NSIndexPath indexPathForRow:indexPath.row-1 inSection:indexPath.section]];
+            [cell.contentView addSubview:pickerView];
+            CGRect bounds = pickerView.bounds;
+            bounds.size.width = self.tableView.bounds.size.width;
+            pickerView.frame = bounds;
+            cell.frame = bounds;
+            [pickerView setNeedsLayout];
+        }
         //don't recycle cells - it would make things complicated
-        return [[cellClass alloc] initWithStyle:style reuseIdentifier:NSStringFromClass(cellClass)];
+        return cell;
     }
 }
 
@@ -2678,6 +2699,45 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
 - (void)didSelectWithTableView:(__unused UITableView *)tableView controller:(__unused UIViewController *)controller
 {
     //override
+}
+
+- (void)showInlinePicker:(UIView*)view
+{
+    UITableView *tableView = [self tableView];
+    NSDictionary* attributes = @{FXFormFieldType: FXFormFieldTypeInlinePicker};
+    FXFormField *field = [[FXFormField alloc] initWithForm:self.field.form controller:self.field.formController attributes:attributes];
+    FXFormSection *section = [self.field.formController sectionAtIndex:tableView.indexPathForSelectedRow.section];
+    NSIndexPath *indexPath = [self.field.formController indexPathForField:self.field];
+    field.formController.cellResponderCache[indexPath] = view;
+    [section.fields insertObject:field atIndex:indexPath.row+1];
+    NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:indexPath.row+1 inSection:indexPath.section];
+    
+    [tableView beginUpdates];
+    [tableView insertRowsAtIndexPaths:@[newIndexPath] withRowAnimation:UITableViewRowAnimationFade];
+    [tableView endUpdates];
+    [tableView scrollToRowAtIndexPath:newIndexPath atScrollPosition:UITableViewScrollPositionBottom animated:YES];
+}
+
+- (void)hideInlineDatePicker
+{
+    UITableView *tableView = [self tableView];
+    NSIndexPath *indexPath = [self.field.formController indexPathForField:self.field];
+    FXFormSection *section = [self.field.formController sectionAtIndex:indexPath.section];
+    [section.fields removeObjectAtIndex:indexPath.row+1];
+    NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:indexPath.row+1 inSection:indexPath.section];
+    
+    [CATransaction begin];
+    [CATransaction setCompletionBlock:^{
+        [self.field.formController.cellResponderCache[indexPath] removeFromSuperview];
+        if (!self.isFirstResponder) {
+            [self.field.formController.cellResponderCache removeObjectForKey:indexPath];
+        }
+    }];
+    [tableView beginUpdates];
+    [tableView deleteRowsAtIndexPaths:@[newIndexPath] withRowAnimation:UITableViewRowAnimationFade];
+    [tableView endUpdates];
+    
+    [CATransaction commit];
 }
 
 @end
@@ -3344,7 +3404,7 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
 - (void)setUp
 {
     self.datePicker = [[UIDatePicker alloc] init];
-    [self.datePicker addTarget:self action:@selector(valueChanged) forControlEvents:UIControlEventValueChanged];
+    [self.datePicker addTarget:self action:@selector(valueChanged:) forControlEvents:UIControlEventValueChanged];
 }
 
 - (void)update
@@ -3375,12 +3435,12 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
 
 - (UIView *)inputView
 {
-    return self.datePicker;
+    return self.field.isInlineDatePickerType ? nil : self.datePicker;
 }
 
-- (void)valueChanged
+- (void)valueChanged:(UIDatePicker *)datePicker
 {
-    self.field.value = self.datePicker.date;
+    self.field.value = datePicker.date;
     self.detailTextLabel.text = [self.field fieldDescription];
     [self setNeedsLayout];
     
@@ -3389,15 +3449,38 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
 
 - (void)didSelectWithTableView:(UITableView *)tableView controller:(__unused UIViewController *)controller
 {
-    if (![self isFirstResponder])
-    {
+    if (![self isFirstResponder]) {
         [self becomeFirstResponder];
     }
-    else
-    {
+    else {
         [self resignFirstResponder];
     }
     [tableView deselectRowAtIndexPath:tableView.indexPathForSelectedRow animated:YES];
+    
+}
+
+- (BOOL)becomeFirstResponder
+{
+    BOOL flag = [super becomeFirstResponder];
+    if (self.field.isInlineDatePickerType) {
+        if ([[[UIDevice currentDevice] systemVersion] floatValue] < 8) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self showInlinePicker:self.datePicker];
+            });
+        } else {
+            [self showInlinePicker:self.datePicker];
+        }
+    }
+    return flag;
+}
+
+- (BOOL)resignFirstResponder
+{
+    BOOL flag = [super resignFirstResponder];
+    if (self.field.isInlineDatePickerType) {
+        [self hideInlineDatePicker];
+    }
+    return flag;
 }
 
 @end
@@ -3704,3 +3787,12 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
 }
 
 @end
+
+@interface FXFormInlinePickerCell ()
+
+@end
+
+@implementation FXFormInlinePickerCell
+
+@end
+
