@@ -207,7 +207,7 @@ UIKIT_EXTERN NSString *const FXFormFieldTypeInlinePicker; // Inline picker for P
 - (void)didSelectWithTableView:(UITableView *)tableView
                     controller:(UIViewController *)controller;
 - (void)showInlinePicker:(UIView*)view;
-- (void)hideInlineDatePicker;
+- (void)hideInlinePicker;
 
 @end
 

@@ -643,6 +643,7 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
 @property (nonatomic, strong) NSMutableDictionary *cellClassesForFieldClasses;
 @property (nonatomic, strong) NSMutableDictionary *controllerClassesForFieldTypes;
 @property (nonatomic, strong) NSMutableDictionary *controllerClassesForFieldClasses;
+@property (nonatomic, strong) NSMutableDictionary *inlinePickerFieldsForFieldKey;
 
 @property (nonatomic, assign) UIEdgeInsets originalTableContentInset;
 
@@ -746,7 +747,11 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
         {
             [NSException raise:FXFormsException format:@"Unsupported field type: %@", [dictionaryOrKey class]];
         }
-        fields[i] = [[self alloc] initWithForm:form controller:formController attributes:dictionary];
+        FXFormField* field = [[self alloc] initWithForm:form controller:formController attributes:dictionary];
+        fields[i] = field;
+        if (formController.inlinePickerFieldsForFieldKey[field.key] != nil) {
+            [fields insertObject:formController.inlinePickerFieldsForFieldKey[field.key] atIndex:i + 1];
+        }
     }
     
     return fields;
@@ -1859,6 +1864,7 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
         _controllerClassesForFieldTypes = [@{FXFormFieldTypeDefault: [FXFormViewController class]} mutableCopy];
         _controllerClassesForFieldClasses = [NSMutableDictionary dictionary];
         _cellResponderCache = [NSMutableDictionary dictionary];
+        _inlinePickerFieldsForFieldKey = [NSMutableDictionary dictionary];
         
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(keyboardDidShow:)
@@ -2051,6 +2057,21 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
     return nil;
 }
 
+- (NSIndexPath *)indexPathForFieldWithKey:(NSString *)key
+{
+    NSUInteger sectionIndex = 0;
+    for (FXFormSection *section in self.sections)
+    {
+        NSUInteger fieldIndex = [[section.fields valueForKey:@"key"] indexOfObject:key];
+        if (fieldIndex != NSNotFound)
+        {
+            return [NSIndexPath indexPathForRow:fieldIndex inSection:sectionIndex];
+        }
+        sectionIndex ++;
+    }
+    return nil;
+}
+
 - (void)enumerateFieldsWithBlock:(void (^)(FXFormField *field, NSIndexPath *indexPath))block
 {
     NSUInteger sectionIndex = 0;
@@ -2150,7 +2171,8 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
         UITableViewCell *cell = [[cellClass alloc] initWithStyle:style reuseIdentifier:NSStringFromClass(cellClass)];
         if ([field.type isEqualToString:FXFormFieldTypeInlinePicker]) {
             NSIndexPath *indexPath = [self indexPathForField:field];
-            UIView *pickerView = self.cellResponderCache[[NSIndexPath indexPathForRow:indexPath.row-1 inSection:indexPath.section]];
+            FXFormField* previousField = [field.formController fieldForIndexPath:[NSIndexPath indexPathForRow:indexPath.row-1 inSection:indexPath.section]];
+            UIView *pickerView = self.cellResponderCache[previousField.key];
             [cell.contentView addSubview:pickerView];
             CGRect bounds = pickerView.bounds;
             bounds.size.width = self.tableView.bounds.size.width;
@@ -2707,37 +2729,43 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
     NSDictionary* attributes = @{FXFormFieldType: FXFormFieldTypeInlinePicker};
     FXFormField *field = [[FXFormField alloc] initWithForm:self.field.form controller:self.field.formController attributes:attributes];
     FXFormSection *section = [self.field.formController sectionAtIndex:tableView.indexPathForSelectedRow.section];
-    NSIndexPath *indexPath = [self.field.formController indexPathForField:self.field];
-    field.formController.cellResponderCache[indexPath] = view;
+    NSIndexPath *indexPath = [self.field.formController indexPathForFieldWithKey:self.field.key];
+    self.field.formController.cellResponderCache[self.field.key] = view;
+    self.field.formController.inlinePickerFieldsForFieldKey[self.field.key] = field;
     [section.fields insertObject:field atIndex:indexPath.row+1];
     NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:indexPath.row+1 inSection:indexPath.section];
     
     [tableView beginUpdates];
     [tableView insertRowsAtIndexPaths:@[newIndexPath] withRowAnimation:UITableViewRowAnimationFade];
     [tableView endUpdates];
-    [tableView scrollToRowAtIndexPath:newIndexPath atScrollPosition:UITableViewScrollPositionBottom animated:YES];
+    [tableView scrollToRowAtIndexPath:newIndexPath atScrollPosition:UITableViewScrollPositionNone animated:YES];
 }
 
-- (void)hideInlineDatePicker
+- (void)hideInlinePicker
 {
     UITableView *tableView = [self tableView];
-    NSIndexPath *indexPath = [self.field.formController indexPathForField:self.field];
-    FXFormSection *section = [self.field.formController sectionAtIndex:indexPath.section];
-    [section.fields removeObjectAtIndex:indexPath.row+1];
-    NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:indexPath.row+1 inSection:indexPath.section];
-    
-    [CATransaction begin];
-    [CATransaction setCompletionBlock:^{
-        [self.field.formController.cellResponderCache[indexPath] removeFromSuperview];
-        if (!self.isFirstResponder) {
-            [self.field.formController.cellResponderCache removeObjectForKey:indexPath];
-        }
-    }];
-    [tableView beginUpdates];
-    [tableView deleteRowsAtIndexPaths:@[newIndexPath] withRowAnimation:UITableViewRowAnimationFade];
-    [tableView endUpdates];
-    
-    [CATransaction commit];
+    NSIndexPath *indexPath = [self.field.formController indexPathForFieldWithKey:self.field.key];
+    if (indexPath) {
+        FXFormSection *section = [self.field.formController sectionAtIndex:indexPath.section];
+        NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:indexPath.row+1 inSection:indexPath.section];
+        [section.fields removeObjectAtIndex:indexPath.row+1];
+        [self.field.formController.inlinePickerFieldsForFieldKey removeObjectForKey:self.field.key];
+        
+        [CATransaction begin];
+        [CATransaction setCompletionBlock:^{
+            [self.field.formController.cellResponderCache[self.field.key] removeFromSuperview];
+            if (!self.isFirstResponder) {
+                [self.field.formController.cellResponderCache removeObjectForKey:self.field.key];
+            }
+        }];
+        [tableView beginUpdates];
+        [tableView deleteRowsAtIndexPaths:@[newIndexPath] withRowAnimation:UITableViewRowAnimationFade];
+        [tableView endUpdates];
+        
+        [CATransaction commit];
+    } else {
+        [self.field.formController.inlinePickerFieldsForFieldKey removeObjectForKey:self.field.key];
+    }
 }
 
 @end
@@ -3478,7 +3506,7 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
 {
     BOOL flag = [super resignFirstResponder];
     if (self.field.isInlineDatePickerType) {
-        [self hideInlineDatePicker];
+        [self hideInlinePicker];
     }
     return flag;
 }
