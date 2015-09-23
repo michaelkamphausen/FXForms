@@ -2725,6 +2725,9 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
 
 - (void)showInlinePicker:(UIView*)view
 {
+    if (self.field.formController.inlinePickerFieldsForFieldKey[self.field.key] != nil) {
+        return;
+    }
     UITableView *tableView = [self tableView];
     NSDictionary* attributes = @{FXFormFieldType: FXFormFieldTypeInlinePicker};
     FXFormField *field = [[FXFormField alloc] initWithForm:self.field.form controller:self.field.formController attributes:attributes];
@@ -2743,6 +2746,9 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
 
 - (void)hideInlinePicker
 {
+    if (self.field.formController.inlinePickerFieldsForFieldKey[self.field.key] == nil) {
+        return;
+    }
     UITableView *tableView = [self tableView];
     NSIndexPath *indexPath = [self.field.formController indexPathForFieldWithKey:self.field.key];
     if (indexPath) {
