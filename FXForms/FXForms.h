@@ -151,6 +151,7 @@ UIKIT_EXTERN NSString *const FXFormFieldTypeInlinePicker; // Inline picker for P
 - (NSUInteger)numberOfFieldsInSection:(NSUInteger)section;
 - (FXFormField *)fieldForIndexPath:(NSIndexPath *)indexPath;
 - (NSIndexPath *)indexPathForField:(FXFormField *)field;
+- (NSIndexPath *)indexPathForFieldWithKey:(NSString *)key;
 - (void)enumerateFieldsWithBlock:(void (^)(FXFormField *field, NSIndexPath *indexPath))block;
 
 - (Class)cellClassForField:(FXFormField *)field;
