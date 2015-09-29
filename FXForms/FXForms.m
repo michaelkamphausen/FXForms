@@ -1409,7 +1409,7 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
     if ((self = [super init]))
     {
         _field = field;
-        id action = ^(__unused id sender)
+        id action = field.isInline ? field.action : ^(__unused id sender)
         {
             if (field.action)
             {
