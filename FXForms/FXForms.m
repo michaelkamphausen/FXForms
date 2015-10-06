@@ -2733,10 +2733,15 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
     FXFormField *field = [[FXFormField alloc] initWithForm:self.field.form controller:self.field.formController attributes:attributes];
     FXFormSection *section = [self.field.formController sectionAtIndex:tableView.indexPathForSelectedRow.section];
     NSIndexPath *indexPath = [self.field.formController indexPathForFieldWithKey:self.field.key];
+    NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:indexPath.row+1 inSection:indexPath.section];
+    
+    if ([section.fields count] < newIndexPath.row) {
+        return;
+    }
+    
     self.field.formController.cellResponderCache[self.field.key] = view;
     self.field.formController.inlinePickerFieldsForFieldKey[self.field.key] = field;
-    [section.fields insertObject:field atIndex:indexPath.row+1];
-    NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:indexPath.row+1 inSection:indexPath.section];
+    [section.fields insertObject:field atIndex:newIndexPath.row];
     
     [tableView beginUpdates];
     [tableView insertRowsAtIndexPaths:@[newIndexPath] withRowAnimation:UITableViewRowAnimationFade];
@@ -2754,7 +2759,12 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
     if (indexPath) {
         FXFormSection *section = [self.field.formController sectionAtIndex:indexPath.section];
         NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:indexPath.row+1 inSection:indexPath.section];
-        [section.fields removeObjectAtIndex:indexPath.row+1];
+        
+        if ([section.fields count] < newIndexPath.row) {
+            return;
+        }
+        
+        [section.fields removeObjectAtIndex:newIndexPath.row];
         [self.field.formController.inlinePickerFieldsForFieldKey removeObjectForKey:self.field.key];
         
         [CATransaction begin];
