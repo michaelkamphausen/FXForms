@@ -2145,46 +2145,6 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
     return [self numberOfFieldsInSection:index];
 }
 
-- (UITableViewCell *)cellForField:(FXFormField *)field
-{
-    //don't recycle cells - it would make things complicated
-    Class cellClass = field.cellClass ?: [self cellClassForField:field];
-    NSString *nibName = NSStringFromClass(cellClass);
-    if ([[NSBundle mainBundle] pathForResource:nibName ofType:@"nib"])
-    {
-        //load cell from nib
-        return [[[NSBundle mainBundle] loadNibNamed:nibName owner:nil options:nil] firstObject];
-    }
-    else
-    {
-        //hackity-hack-hack
-        UITableViewCellStyle style = UITableViewCellStyleDefault;
-        if ([field valueForKey:@"style"])
-        {
-            style = [[field valueForKey:@"style"] integerValue];
-        }
-        else if (FXFormCanGetValueForKey(field.form, field.key))
-        {
-            style = UITableViewCellStyleValue1;
-        }
-        
-        UITableViewCell *cell = [[cellClass alloc] initWithStyle:style reuseIdentifier:NSStringFromClass(cellClass)];
-        if ([field.type isEqualToString:FXFormFieldTypeInlinePicker]) {
-            NSIndexPath *indexPath = [self indexPathForField:field];
-            FXFormField* previousField = [field.formController fieldForIndexPath:[NSIndexPath indexPathForRow:indexPath.row-1 inSection:indexPath.section]];
-            UIView *pickerView = self.cellResponderCache[previousField.key];
-            [cell.contentView addSubview:pickerView];
-            CGRect bounds = pickerView.bounds;
-            bounds.size.width = self.tableView.bounds.size.width;
-            pickerView.frame = bounds;
-            cell.frame = bounds;
-            [pickerView setNeedsLayout];
-        }
-        //don't recycle cells - it would make things complicated
-        return cell;
-    }
-}
-
 - (CGFloat)tableView:(__unused UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
 {
     FXFormField *field = [self fieldForIndexPath:indexPath];
@@ -2198,7 +2158,7 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
     NSNumber *cachedHeight = _cellHeightCache[className];
     if (!cachedHeight)
     {
-        UITableViewCell *cell = [self cellForField:field];
+        UITableViewCell *cell = [self tableView:tableView cellForRowAtIndexPath:indexPath];
         cachedHeight = @(cell.bounds.size.height);
         _cellHeightCache[className] = cachedHeight;
     }
@@ -2208,7 +2168,37 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
 
 - (UITableViewCell *)tableView:(__unused UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    return [self cellForField:[self fieldForIndexPath:indexPath]];
+    FXFormField* field = [self fieldForIndexPath:indexPath];
+    Class cellClass = field.cellClass ?: [self cellClassForField:field];
+    NSString *className = NSStringFromClass(cellClass);
+    UITableViewCell* cell = [tableView dequeueReusableCellWithIdentifier:className];
+    if (cell == nil) {
+        if ([[NSBundle mainBundle] pathForResource:className ofType:@"nib"] != nil) {
+            UINib* nib = [UINib nibWithNibName:className bundle:nil];
+            [tableView registerNib:nib forCellReuseIdentifier:className];
+            cell = [[[NSBundle mainBundle] loadNibNamed:className owner:nil options:nil] firstObject];
+        } else {
+            [tableView registerClass:cellClass forCellReuseIdentifier:className];
+            cell = [[cellClass alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:NSStringFromClass(cellClass)];
+        }
+    }
+    
+    if ([field.type isEqualToString:FXFormFieldTypeInlinePicker]) {
+        NSIndexPath *indexPath = [self indexPathForField:field];
+        FXFormField* previousField = [field.formController fieldForIndexPath:[NSIndexPath indexPathForRow:indexPath.row-1 inSection:indexPath.section]];
+        UIView *pickerView = self.cellResponderCache[previousField.key];
+        for (UIView* view in cell.contentView.subviews) {
+            [view removeFromSuperview];
+        }
+        [cell.contentView addSubview:pickerView];
+        CGRect bounds = pickerView.bounds;
+        bounds.size.width = self.tableView.bounds.size.width;
+        pickerView.frame = bounds;
+        cell.frame = bounds;
+        [pickerView setNeedsLayout];
+    }
+    
+    return cell;
 }
 
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath
@@ -2596,7 +2586,7 @@ static void FXFormPreprocessFieldDictionary(NSMutableDictionary *dictionary)
 
 - (id)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier
 {
-    if ((self = [super initWithStyle:style reuseIdentifier:reuseIdentifier]))
+    if ((self = [super initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:reuseIdentifier]))
     {
         self.textLabel.font = [UIFont boldSystemFontOfSize:17];
         FXFormLabelSetMinFontSize(self.textLabel, FXFormFieldMinFontSize);
